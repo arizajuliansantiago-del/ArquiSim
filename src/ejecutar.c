@@ -35,6 +35,7 @@
  */
 #include <string.h>
 #include "cpu.h"
+#include "sistema.h"
 
 static int es(const Instruccion *in, const char *mnemonico)
 {
@@ -49,6 +50,20 @@ Resultado ejecutar(CPU *cpu, const Instruccion *in)
         if (cpu->banderas & BANDERA_V)          /* desbordamiento con signo */
             return excepcion(cpu, "desbordamiento aritmético en add");
         escribir_registro(cpu, in->rd, r);
+        return OK;
+    }
+    
+    if (es(in, "adda")) {
+        cpu->acc = sumar_con_banderas(cpu, cpu->acc, cpu->reg[in->rt]);
+        return OK;
+    }
+    if (es(in, "suba")) {
+        cpu->acc = restar_con_banderas(cpu, cpu->acc, cpu->reg[in->rt]);
+        return OK;
+    }
+    
+    if (es(in, "addia")) {
+        cpu->acc = sumar_con_banderas(cpu, cpu->acc, (uint32_t)in->simm);
         return OK;
     }
 
@@ -141,6 +156,24 @@ Resultado ejecutar(CPU *cpu, const Instruccion *in)
         escribir_registro(cpu, in->rd, (x & 0x80000000u) ? ~(~x >> in->shamt) : x >> in->shamt);
         return OK;
     }
+    
+    if (es(in, "mult")) {
+        int64_t resultado = (int64_t)(int32_t)cpu->reg[in->rs] *
+                            (int64_t)(int32_t)cpu->reg[in->rt];
+
+        cpu->hi = (uint32_t)((uint64_t)resultado >> 32);
+        cpu->lo = (uint32_t)resultado;
+        return OK;
+    }
+
+    if (es(in, "multu")) {
+        uint64_t resultado = (uint64_t)cpu->reg[in->rs] *
+                             (uint64_t)cpu->reg[in->rt];
+
+        cpu->hi = (uint32_t)(resultado >> 32);
+        cpu->lo = (uint32_t)resultado;
+        return OK;
+    }
 
     /* ================ Etapa 2: memoria ================ */
     /* Todas usan base + desplazamiento: dirección = rs + imm (imm con signo). */
@@ -202,14 +235,109 @@ Resultado ejecutar(CPU *cpu, const Instruccion *in)
     /* ---------------- j, jal: saltos pseudodirectos (tipo J) ---------------- */
     if (es(in, "jal"))
         escribir_registro(cpu, REG_RA, cpu->pc);    /* dirección de retorno: PC + 4 */
+    
     if (es(in, "j") || es(in, "jal")) {
         cpu->pc = (cpu->pc & 0xF0000000u) | (in->direccion << 2);
+        return OK;
+    }
+    
+    if (es(in, "jz")) {
+        if (cpu->banderas & BANDERA_Z) {
+            cpu->pc = (cpu->pc & 0xF0000000u) | (in->direccion << 2);
+        }
+        return OK;
+    }
+
+    if (es(in, "jn")) {
+        if (cpu->banderas & BANDERA_N) {
+            cpu->pc = (cpu->pc & 0xF0000000u) | (in->direccion << 2);
+        }
+        return OK;
+    }
+
+    if (es(in, "jc")) {
+        if (cpu->banderas & BANDERA_C) {
+            cpu->pc = (cpu->pc & 0xF0000000u) | (in->direccion << 2);
+        }
+        return OK;
+    }
+
+    if (es(in, "jv")) {
+        if (cpu->banderas & BANDERA_V) {
+            cpu->pc = (cpu->pc & 0xF0000000u) | (in->direccion << 2);
+        }
         return OK;
     }
 
     /* ---------------- jr rs: saltar a la dirección guardada en un registro ---------------- */
     if (es(in, "jr")) {
         cpu->pc = cpu->reg[in->rs];
+        return OK;
+    }
+    
+    if (es(in, "mtacc")) {
+      cpu->acc = cpu->reg[in->rs];
+      return OK;
+    }
+
+    if (es(in, "mfacc")) {
+        escribir_registro(cpu, in->rd, cpu->acc);
+        return OK;
+    }
+    
+    if (es(in, "cmp")) {
+        restar_con_banderas(cpu, cpu->reg[in->rs], cpu->reg[in->rt]);
+        return OK;
+    }
+    
+    if (es(in, "mfhi")) {
+        escribir_registro(cpu, in->rd, cpu->hi);
+        return OK;
+    }
+
+    if (es(in, "mflo")) {
+        escribir_registro(cpu, in->rd, cpu->lo);
+        return OK;
+    }
+    
+    if (es(in, "div")) {
+        int32_t a = (int32_t)cpu->reg[in->rs];
+        int32_t b = (int32_t)cpu->reg[in->rt];
+
+        if (b == 0) {
+            return excepcion(cpu, "división entre cero");
+        }
+
+        if (a == INT32_MIN && b == -1) {
+            cpu->lo = (uint32_t)INT32_MIN;
+            cpu->hi = 0;
+        } else {
+            cpu->lo = (uint32_t)(a / b);
+            cpu->hi = (uint32_t)(a % b);
+        }
+
+        return OK;
+    }
+
+    if (es(in, "divu")) {
+        uint32_t a = cpu->reg[in->rs];
+        uint32_t b = cpu->reg[in->rt];
+
+        if (b == 0) {
+            return excepcion(cpu, "división entre cero");
+        }
+
+        cpu->lo = a / b;
+        cpu->hi = a % b;
+
+        return OK;
+    }
+
+    if (es(in, "mul")) {
+        uint64_t resultado = (uint64_t)cpu->reg[in->rs] *
+                             (uint64_t)cpu->reg[in->rt];
+
+        escribir_registro(cpu, in->rd, (uint32_t)resultado);
         return OK;
     }
 
@@ -248,6 +376,10 @@ Resultado ejecutar(CPU *cpu, const Instruccion *in)
      *
      * Pruebe con:  make test
      */
+     
+    if (es(in, "syscall")) {
+        return llamar_sistema(cpu);
+    }
 
     return excepcion(cpu, "instrucción '%s' no implementada (ver src/ejecutar.c)",
                      in->def->nombre);

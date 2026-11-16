@@ -20,7 +20,7 @@
 #    rd, rs, rt  registros            imm     inmediato de 16 bits
 #    shamt       desplazamiento 0-31  label   etiqueta de salto
 #    imm(rs)     base + desplazamiento (acceso a memoria)
-#    rd+rs       un registro escrito que va a DOS campos (forma de 2 direcciones)
+#    rd+rs       un registro escrito que va a DOS campos (forma de 2 direccion	es)
 #    rd=$v0      campo implícito: no se escribe, siempre es ese registro
 #
 #  Columna opcional "nombre interno": identifica la instrucción en ejecutar.c.
@@ -97,3 +97,38 @@ la     I  001000  -       rt,imm,rs=$zero          addi   # la $t0, A       ->  
 b      I  000100  -       label,rs=$zero,rt=$zero  beq    # b LOOP          ->  beq  $zero, $zero, LOOP
 
 # ---------------- Agregue aquí las instrucciones de las etapas 4 y 5 ----------------
+
+# ---------------- Etapa 5: instrucciones de dos direcciones ----------------
+add    R 000000 100000 rd+rs,rt
+sub    R 000000 100010 rd+rs,rt
+and    R 000000 100100 rd+rs,rt
+or     R 000000 100101 rd+rs,rt
+addi   I 001000 - rt+rs,imm
+
+# ---------------- Etapa 5: instrucciones de una dirección ----------------
+add    R 000000 110000 rt             adda
+sub    R 000000 110010 rt             suba
+addi   I 011000 - imm                 addia
+
+# ---------------- Etapa 5: acumulador ----------------
+mtacc  R 000000 010101 rs
+mfacc  R 000000 010100 rd
+
+# ---------------- Etapa 5: banderas ----------------
+cmp    R 000000 110100 rs,rt
+jz     J 010100 - label
+jn     J 010101 - label
+jc     J 010110 - label
+jv     J 010111 - label
+
+# ---------------- Etapa 5: multiplicación y división ----------------
+mult   R 000000 011000 rs,rt
+multu  R 000000 011001 rs,rt
+div    R 000000 011010 rs,rt
+divu   R 000000 011011 rs,rt
+mfhi   R 000000 010000 rd
+mflo   R 000000 010010 rd
+mul    R 011100 000010 rd,rs,rt
+
+# ---------------- Etapa 5: consola ----------------
+syscall R 000000 001100 -
